@@ -175,14 +175,10 @@ median_income_df_clean <- subset(median_income_df_clean, select = -c(Year))
 head(median_income_df_clean$Value)
 #Since there is large deviation in the income value, let us apply min max scaling to the data
 
-minMax  <- function(x) { 
-  (x - min(x)) / (max(x) - min(x))
-}  
-median_income_df_clean$Value = unclass(median_income_df_clean$Value)
-print(sapply(median_income_df_clean, class)) 
 
-#preproc <- preProcess(median_income_df_clean$Value, method=c("range"))
-median_income_df_clean$nValue <- lapply(median_income_df_clean$Value, minMax)
+median_income_df_clean$Value = unclass(median_income_df_clean$Value)
+
+
 head(median_income_df_clean)
 median_income_df_clean %>% 
   filter(Town %in% town_list) %>%
@@ -190,7 +186,7 @@ median_income_df_clean %>%
   summarise(median_income = mean(Value)) %>%
   ggplot() +
   labs(title = "Median income trend of diversity for top 10 towns", x = "median income household",y = "Race.Ethnicity") +
-  geom_bar(aes(x=median_income, y=Race.Ethnicity, fill=Race.Ethnicity), stat="identity", show.legend = FALSE) +
+  geom_bar(aes(x=median_income/1000, y=Race.Ethnicity, fill=Race.Ethnicity), stat="identity", show.legend = FALSE) +
   facet_wrap(~ Town)
   
   
