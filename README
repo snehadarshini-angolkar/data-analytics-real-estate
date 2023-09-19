@@ -1,3 +1,5 @@
 We are using 2 data sets. 
 1 - Real estate sale data set from 2001 to 2020. 
 We will try to predict the sale price of the houses in connecticut over time and compare the median rise of income of the people in connecticut town wise .
+
+Unzip the file : real_estate_sales.csv.zip as real_estate_sales.csv in the same location as the code.
