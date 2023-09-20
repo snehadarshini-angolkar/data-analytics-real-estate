@@ -69,11 +69,10 @@ real_estate_df$List.Year <- factor(real_estate_df$List.Year)
 
 #-----------Simple analysis on property Type-------
 # This graph is to inform what type of property sale was maximum in the last 15 to 20 years.
-real_estate_df %>% group_by(Property.Type) %>% count() -> distribution_df1
+real_estate_df %>% group_by(Property.Type) %>% summarise(count = n()) -> distribution_df1
 
-ggplot(data=distribution_df1, aes(x="", y=n, fill=Property.Type)) +
+ggplot(data=distribution_df1, aes(x="", y=count, fill=Property.Type)) +
   geom_col(color="black") +
-  geom_text(aes(label = Property.Type), position = position_stack(vjust = 0.5))+
  coord_polar(theta="y")
 
 #Sale Trend since 2006 . 
