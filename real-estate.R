@@ -158,7 +158,7 @@ free_sales_of_property <- real_estate_df[(real_estate_df$Assessed.Value == real_
 free_sales_of_property %>% group_by(List.Year) %>% count()
 
 # this could be erroneous data, or some government scheme. However, for price prediction, we could 
-# go ahead and drop such a data because this isn't helping in further price prediction. Basically these are outliers
+# go ahead and drop such a data because this isn't helping in further price prediction.
 real_estate_df_after_outlier_removal <- real_estate_df[!(real_estate_df$Assessed.Value == real_estate_df$Sales.Ratio),]
 
 # Use the previous analysis on new dataset of real estate
@@ -171,7 +171,8 @@ real_estate_df_after_outlier_removal %>%
   geom_bar(aes(x=mean_sale_ratio, y=Residential.Type, fill=Residential.Type), stat="identity", show.legend = FALSE) +
   facet_wrap(~ List.Year)
 
-# Top 10 town wise mean price trend for single family and condo residential types. 
+# Top 10 town wise mean price trend for single family and condo residential types. These two types were chosen considering that they
+# are the favourites of the population
 # We want to filter out the top 10 towns in Connecticut where the prices for residential property specifically 
 # for Single Family and Condo is high
 unique(real_estate_df_after_outlier_removal$Town)
