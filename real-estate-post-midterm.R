@@ -1,0 +1,576 @@
+library(dplyr)
+library(ggplot2)
+library(caret)
+library(tseries)
+library(aTSA)
+library(TidyDensity)
+library(forecast)
+
+
+
+real_estate_df <- read.csv("./real_estate_sales.csv", sep=",")
+summary(real_estate_df)
+dim(real_estate_df)
+str(real_estate_df)
+
+clean_up_dataset = function() {
+  
+  sum(real_estate_df$Assessor.Remarks!="")
+  real_estate_df <- subset(real_estate_df, select = -c(Assessor.Remarks))
+  sum(real_estate_df$OPM.remarks!="")
+  real_estate_df <- subset(real_estate_df, select = -c(OPM.remarks))
+  sum(real_estate_df$Location!="")
+  real_estate_df <- subset(real_estate_df, select = -c(Location))
+  sum(real_estate_df$Property.Type=="")
+  sum(real_estate_df$Residential.Type == "") 
+  sum(real_estate_df$Property.Type == "" & real_estate_df$Residential.Type == "")
+  null_values_property_residential <- real_estate_df[(real_estate_df$Property.Type == "" & real_estate_df$Residential.Type == ""),]
+  groups <- null_values_property_residential %>% group_by(List.Year) %>% summarise(total_count = n(), .groups = 'drop')
+  print(groups)
+  # This data shows that we are losing maximum in the initial years from 2001 to 2005. There after the loss is not significant. 
+  #Since we have large data set, we can assume that if we lose this data the impact is not significant.
+  real_estate_df <- real_estate_df[!(real_estate_df$Property.Type == "" & real_estate_df$Residential.Type == ""),]
+  
+  sum(real_estate_df$Non.Use.Code == "") 
+  real_estate_df <- subset(real_estate_df, select = -c(Non.Use.Code))
+  #real_estate_df <- subset(real_estate_df, select = -c(Date.Recorded))
+  return(real_estate_df)
+  
+}
+
+change_column_values = function() {
+  unique(real_estate_df$Property.Type)
+  temp_values <- c("Single Family", "Two Family", "Three Family", "Four Family", "Condo")
+  sum(real_estate_df$Property.Type %in% temp_values)
+  sum(real_estate_df$Property.Type == "Residential")
+  real_estate_df$Property.Type[real_estate_df$Property.Type %in% temp_values & real_estate_df$Residential.Type != ""] <- "Residential"
+  sum(real_estate_df$Property.Type == "Residential")
+  unique(real_estate_df$Residential.Type)
+  return(real_estate_df)
+}
+
+real_estate_df <- clean_up_dataset()
+real_estate_df <- change_column_values()
+View(real_estate_df_clean)
+
+
+
+#-----------Simple analysis on property Type-------
+# This graph is to inform what type of property sale was maximum in the last 15 to 20 years.
+real_estate_df %>% group_by(Property.Type) %>% summarise(count = n()) -> distribution_df1
+
+ggplot(data=distribution_df1, aes(x="", y=count/1000, fill=Property.Type)) +
+  geom_col(color="black") +
+  coord_polar(theta="y")
+
+
+#Sale Trend since 2006 . 
+#Which year was the sale maximum ? 
+real_estate_df %>% 
+  group_by(List.Year) %>% 
+  summarise(count = n()) %>%
+  ggplot() +
+  geom_bar(aes(x=List.Year, y=count, fill=List.Year), stat="identity", show.legend = FALSE)
+
+
+
+# Year wise sale chart for each property type from 2006
+real_estate_df %>%
+  group_by(List.Year, Property.Type) %>%
+  summarise(counts = n()) %>%
+  ggplot() +
+  labs(title = "Property Type sales trend per year", x = "Number of sales * 100",y = "Property Type") +
+  geom_bar(aes(x=counts/100, y=Property.Type, fill=Property.Type), stat="identity", show.legend = FALSE) +
+  facet_wrap(~ List.Year)
+# ---------- Analysis ----------------------------------------------
+# The maximum trading is in residential types. There is rise in vacant land trading in the year 2020
+# ------------------------------------------------------------------
+
+
+# Since the previous graph clearly indicates that it is residential property type that was traded
+# maximum, we try to visualize year wise sale trend of residential property type form 2006
+real_estate_df %>%
+  filter(Residential.Type != "") %>%
+  group_by(List.Year, Residential.Type) %>%
+  summarise(counts = n()) %>%
+  ggplot() +
+  labs(title = "Residential Type sales trend per year", x = "Number of sales * 1000",y = "Residential Type") +
+  geom_bar(aes(x=counts/1000, y=Residential.Type, fill=Residential.Type), stat="identity", show.legend = FALSE) +
+  facet_wrap(~ List.Year)
+# -----Analysis----------------------------------------------------
+# Single family residential types are the favorites of Connecticut. There is fluctuation when residential type 
+# is condo. It is seen to be highest in 2020. Possibly marking influx of people from other regions.?? More people prefering
+#not staying with family? Or simply rise in population ? Unfortunately, the data cannot answer these questions yet.
+# (it is an  open ended question)
+#---------------------------------------------------------------------
+
+# Year wise mean price trend of the residential property 
+real_estate_df %>%
+  filter(Residential.Type != "") %>%
+  group_by(List.Year, Residential.Type) %>%
+  summarise(mean_price = mean(Sale.Amount)) %>%
+  ggplot() +
+  labs(title = "Residential Type sales mean price trend per year", x = "mean of sales price  * 100000$ ",y = "Residential Type") +
+  geom_bar(aes(x=mean_price/100000, y=Residential.Type, fill=Residential.Type), stat="identity", show.legend = FALSE) +
+  facet_wrap(~ List.Year)
+# ----------------------Analysis------------------------------
+# prices of single family type have been the highest from 2006 to 2020. In 2019, prices of four Family 
+# properties shows significant rise and significant drop in prices in 2020. Was covid the reason??
+# prices for Two Family and Three Family are very close until 2019.
+
+
+# Year wise  mean sales ratio trend of the residential property 
+#mean_sale_ratio is (Assessed price / Sale price)
+real_estate_df %>%
+  filter(Residential.Type != "") %>%
+  group_by(List.Year, Residential.Type) %>%
+  summarise(mean_sale_ratio = mean(Sales.Ratio)) %>%
+  ggplot() +
+  labs(title = "Residential Type sales ratio mean price trend per year", x = "mean of sales ratio in hundred thousand's",y = "Residential Type") +
+  geom_bar(aes(x=mean_sale_ratio, y=Residential.Type, fill=Residential.Type), stat="identity", show.legend = FALSE) +
+  facet_wrap(~ List.Year)
+# ----------------------Analysis------------------------------
+# The above results were intriguing, Year 2006 shows a pattern for sales ratio.
+#Let us find out more about it
+
+max(real_estate_df$Sales.Ratio)
+max(real_estate_df$Sale.Amount)
+
+sum(real_estate_df$Assessed.Value == real_estate_df$Sales.Ratio)
+
+free_sales_of_property <- real_estate_df[(real_estate_df$Assessed.Value == real_estate_df$Sales.Ratio),]
+free_sales_of_property %>% group_by(List.Year) %>% count()
+
+# this could be erroneous data, or some government scheme. However, for price prediction, we could 
+# go ahead and drop such a data because this isn't helping in further price prediction.
+real_estate_df_after_outlier_removal <- real_estate_df[!(real_estate_df$Assessed.Value == real_estate_df$Sales.Ratio),]
+
+# Use the previous analysis on new dataset of real estate
+real_estate_df_after_outlier_removal %>%
+  filter(Residential.Type != "") %>%
+  group_by(List.Year, Residential.Type) %>%
+  summarise(mean_sale_ratio = mean(Sales.Ratio)) %>%
+  ggplot() +
+  labs(title = "Residential Type sales mean sales ratio per year", x = "mean of sales ratio",y = "Residential Type") +
+  geom_bar(aes(x=mean_sale_ratio, y=Residential.Type, fill=Residential.Type), stat="identity", show.legend = FALSE) +
+  facet_wrap(~ List.Year)
+
+# Top 10 town wise mean price trend for single family and condo residential types. These two types were chosen considering that they
+# are the favorites of the population
+# We want to filter out the top 10 towns in Connecticut where the prices for residential property specifically 
+# for Single Family and Condo is high
+
+unique(real_estate_df_after_outlier_removal$Town)
+real_estate_df_after_outlier_removal$List.Year = unclass(real_estate_df_after_outlier_removal$List.Year)
+real_estate_df_after_outlier_removal %>%
+  filter(Residential.Type %in% c("Single Family", "Condo") & List.Year > "2015") %>%
+  group_by(Town, Residential.Type) %>%
+  summarise(mean_sale_amount = mean(Sale.Amount)) %>%
+  arrange(desc(mean_sale_amount)) %>%
+  head(10) %>%
+  ggplot() +
+  labs(title = "Residential Type sales mean price trend per town for top 10 towns", x = "mean of sales amount",y = "Residential Type") +
+  geom_bar(aes(x=mean_sale_amount/100000, y=Residential.Type, fill=Residential.Type), stat="identity", show.legend = FALSE) +
+  facet_wrap(~ Town)
+
+# Remove outliers
+real_estate_df_clean <- real_estate_df %>% filter(Sale.Amount > 10)
+
+
+
+
+View(real_estate_df_clean)
+dim(real_estate_df_clean)
+# Residential Type Data
+residential_df <- real_estate_df_clean %>% filter(Property.Type  == "Residential")
+dim(residential_df)
+View(residential_df)
+
+residential_df$Date.Recorded <- as.Date(residential_df$Date.Recorded, "%m/%d/%Y")
+
+
+time_sales <-  residential_df %>%
+  mutate(month = format(Date.Recorded, "%m"), year = format(Date.Recorded, "%Y"))
+time_sales$date <- paste(time_sales$year,"-",time_sales$month,"-01", sep="")
+time_sales$date <- as.Date(time_sales$date)
+time_sales1 <- time_sales[order(time_sales$date), ]
+View(time_sales1)
+
+time_sales2 <- time_sales1 %>% filter(year > 2015 & year < 2021) 
+View(time_sales2)
+dim(time_sales2)
+
+
+
+ggplot(data=Condo, aes(x=date, y=log(Sale.Amount), group = 1)) + 
+  geom_line()+
+  scale_x_date(date_labels = "%Y", date_breaks = "year")
+View(Condo)
+
+summary(residential_df$Sale.Amount)
+residential_df %>% filter(Sale.Amount != 0)
+temp <- residential_df[order(desc(residential_df$Sale.Amount)),]
+head(temp, 1000)
+top_residential_sales  <- head(temp, 1000)
+View(top_residential_sales)
+
+#Most expensive Towns 
+total_sales_per_town <- top_residential_sales %>% group_by(Town) %>% summarise(no_of_sales_per_town = n()) %>% arrange(desc(no_of_sales_per_town))
+View(total_sales_per_town)
+
+
+#Identify and Understand outlier data
+three_quartile <- quantile(real_estate_df_clean$Sale.Amount, 0.75)
+first_quartile <- quantile(real_estate_df_clean$Sale.Amount, 0.25)
+iqr <- three_quartile - first_quartile
+u_threshold <- three_quartile + (1.5 * iqr)
+real_estate_df_clean_outlier <- real_estate_df_clean %>% filter(Sale.Amount > u_threshold) %>%
+  group_by(Town) %>% summarise( count = n()) %>% arrange(desc(count))
+real_estate_df_clean_outlier
+
+# Compare with all data
+View(residential_df %>% group_by(Town) %>% summarise( count = n()) %>% arrange(desc(count)))
+View(townwise_year_sale_mean)
+#Cannot remove the outliers .
+#Example: Number of sales in Greenwich which are above threshold is 9750.
+# Total Number of sales in Greenwich including outliers is 12248 . 
+# This is the nature of the data. Hence cannot be removed blindly
+
+
+# Which town properties are being sold for higher prices than assessed
+top_residential_sales_clean <- top_residential_sales %>% filter(Assessed.Value != 0)
+avg_sales_ratio_for_towns <- top_residential_sales_clean %>% group_by(Town) %>% summarise(average_sales_ratio = mean(Sales.Ratio)) %>% arrange(average_sales_ratio)
+
+
+# Most expensive towns
+most_expensive_towns_data <- residential_df %>% 
+              group_by(Town) %>% 
+              summarise(avg_sale_prices = mean(Sale.Amount)) %>% 
+              arrange(desc(avg_sale_prices)) %>% slice(1:20)
+View(most_expensive_towns_data)
+
+#  Ordered towns with properties which have been sold for prices lower than the  assessed value 
+towns_with_negative_sales_ratio <- residential_df %>% filter(Sales.Ratio > 1) %>% group_by(Town) %>% 
+      summarise(average_sales_ratio = mean(Sales.Ratio)) %>% arrange(desc(average_sales_ratio))
+
+# Towns with maximum number of negative sales ratio for the residential property
+towns_with_maximum_neg_sales_ratio <- residential_df %>% filter(Sales.Ratio > 1) %>% group_by(Town) %>% summarise(no_neg_sales_ratio = n()) %>% arrange(desc(no_neg_sales_ratio))%>% slice(1:20)
+View(towns_with_maximum_neg_sales_ratio)
+#Towns that are most expensive and which have maximum number of negative sales ratio
+intersect(most_expensive_towns_data$Town , towns_with_maximum_neg_sales_ratio$Town)
+
+# Graph of Negative sales ratio for Top expensive towns
+residential_df %>%
+  filter(Town %in% most_expensive_towns_data$Town & List.Year > 2009)%>%
+  group_by(List.Year, Town) %>%
+  summarise(average_sales_ratio = mean(Sales.Ratio)) %>%
+  arrange(desc(average_sales_ratio)) %>%
+  ggplot() +
+    labs(title = "Negative Sales ratio for towns ", x = "Average Sale ratio ",y = "Towns") +
+    geom_bar(aes(x=average_sales_ratio, y=Town, fill=Town), stat="identity", show.legend = FALSE) +
+    facet_wrap(~ List.Year)
+
+# Plots of average sale prices of top 10 expensive towns for single family
+top_10 <- head(most_expensive_towns_data, 10)
+residential_df %>%
+  filter(Town %in% top_10$Town) %>% 
+  filter(Residential.Type == "Single Family") %>%
+  group_by(Town, List.Year) %>%
+  summarise(average_sales_amount = mean(Sale.Amount)) %>%
+  ggplot() +
+  aes(x = List.Year, y=average_sales_amount/1000, group=factor(Town), colour=Town )+
+  geom_line() +
+  labs(x="Year", colour="Town")
+
+# Plots of average sale prices of top 10 expensive towns for Condo
+residential_df %>%
+  filter(Town %in% top_10$Town) %>% 
+  filter(Residential.Type == "Condo") %>%
+  group_by(Town, List.Year) %>%
+  summarise(average_sales_amount = mean(Sale.Amount)) %>%
+  ggplot() +
+  aes(x = List.Year, y=average_sales_amount/1000, group=factor(Town), colour=Town )+
+  geom_line() +
+  labs(x="Year", colour="Town")
+  
+  
+
+
+
+# Begin town wise forecasting 
+# Identify Towns which show positive difference in the sale prices from previous years . 
+#We ar interested in the data after 2010 
+# Town wise sale price mean for each year
+townwise_year_sale_mean <- residential_df %>% filter(List.Year > 2010) %>% group_by(Town, List.Year) %>% summarise(avg_sale_amount = mean(Sale.Amount))
+
+# Identify unique towns  
+towns <- unique(townwise_year_sale_mean$Town)
+
+# Sort the years
+years <- unique(townwise_year_sale_mean$List.Year)
+years <- as.numeric(years)
+years <- sort(years)
+years
+town_avgsale <- data.frame(town = character(),  '2013' = numeric(), '2014' = numeric(),'2015' = numeric(), '2016' = numeric(), '2017' = numeric(), 
+                           '2018' = numeric(), '2019' = numeric(),'2020' = numeric(), '2021' = numeric(),  stringsAsFactors = FALSE)
+
+# Create a data frame for the town and sale price change for consecutive years, to 
+#identify which towns are performing better constantly
+
+create_change_chart <- function() {
+  i <- 0
+  for (town in towns) {
+    vect = c()
+    vect <- c(vect, town)
+    for(year in years) {
+     # if (year != 2021) {
+        
+        sale_amount1 = townwise_year_sale_mean[(townwise_year_sale_mean$Town == town & townwise_year_sale_mean$List.Year == year),]
+        sale_amount2 = townwise_year_sale_mean[(townwise_year_sale_mean$Town == town & townwise_year_sale_mean$List.Year == year+1),]
+        
+        if(nrow(sale_amount2) > 0 && nrow(sale_amount1) > 0) {
+          diff1 = sale_amount2$avg_sale_amount - sale_amount1$avg_sale_amount
+          diff1 = (diff1 / sale_amount1$avg_sale_amount) 
+          vect <- c(vect, format(round(diff1, 3), nsmall = 2))
+          
+        } else if(nrow(sale_amount2) > 0 && nrow(sale_amount1) == 0 && year != 2011) {
+          sale_amount0 = townwise_year_sale_mean[(townwise_year_sale_mean$Town == town & townwise_year_sale_mean$List.Year == year-1),]
+          diff2 = sale_amount2$avg_sale_amount - sale_amount0$avg_sale_amount
+          diff2 = (diff2 / sale_amount0$avg_sale_amount) 
+          vect <- c(vect, format(round(diff2, 3), nsmall = 2))
+        } else {
+          vect <- c(vect, NA)
+        }
+      }
+ #   }
+    i <- i+1  
+    town_avgsale[i,] <- vect
+  }
+  return (town_avgsale)
+}
+town_avgsale = create_change_chart()
+View(town_avgsale)
+
+# Manual Testing above function 
+price1 <- townwise_year_sale_mean %>% filter(List.Year == 2015 & Town == "Andover")
+price2 <- townwise_year_sale_mean %>% filter(List.Year == 2017 & Town == "Andover")
+price2$avg_sale_amount
+price1$avg_sale_amount
+
+
+
+# Using this function we identify which towns have performed better in the last n years ( Size of the vector passed)
+is_increasing <- function(vec) {
+  for (i in 2:length(vec)) {
+    if (is.na(vec[i]) || is.na(vec[i - 1])) {
+      return (FALSE)
+    }
+    if (vec[i] <= vec[i - 1] || (vec[i - 1] < 0)) {
+       return(FALSE)
+      }
+    }
+  return(TRUE)
+}
+
+
+# Identify towns that have performed better for the last 3 years
+find_better_towns <- function(town_avgsale) {
+  better_towns <- c()
+  for (i in 1:nrow(town_avgsale)) {
+    row_data <- town_avgsale[i, ]
+    value <- is_increasing(row_data[8:10])
+    
+    if (value == TRUE) {
+      better_towns <- c(better_towns, row_data[1])
+    }
+    
+  }
+  return (better_towns)
+}
+better_towns <- find_better_towns(town_avgsale)
+
+# Filter the towns with positive rate change
+better_towns_rate_change <- town_avgsale %>% filter(town %in% better_towns)
+View(better_towns_rate_change)
+
+# Visualizing the average price change of towns that we think are better in terms of investment
+residential_df %>%
+  filter(Town %in% better_towns_rate_change$town) %>% 
+  group_by(Town, List.Year) %>%
+  summarise(average_sales_amount = mean(Sale.Amount)) %>%
+  ggplot() +
+  aes(x = List.Year, y=average_sales_amount/1000, group=factor(Town), colour=Town )+
+  geom_line() +
+  labs(x="Year", colour="Town")
+
+
+
+names <- as.vector(colnames(town_avgsale))
+value <- as.vector(t(town_avgsale[1, ]))
+names <- names[2:10]
+value <- value[2:10]
+row1 <- data.frame(names, value)
+row1 <- na.omit(row1)
+ggplot(row1, aes(x=names, y = value, group = 1)) +
+  geom_line(linetype = "dashed") + 
+  geom_point()
+
+View(town_avgsale)
+
+# Average sale price of better towns 
+sale_better_towns <- residential_df %>% filter(Town %in% better_towns) %>% group_by(Town, List.Year) %>% summarise(avg_sale_amount = mean(Sale.Amount))
+View(sale_better_towns)
+
+# We randomly pick towns from better towns and check Autocorrelation 
+# The graphs show some trends or suggest the data is auto regressive.
+townacf1 <- sale_better_towns %>% filter(Town == "Killingly")
+townacf2 <- sale_better_towns %>% filter(Town == "Danbury")
+townacf3 <- sale_better_towns %>% filter(Town == "Monroe")
+townacf4 <- sale_better_towns %>% filter(Town == "Shelton")
+par(mfrow=c(2,2))
+acf(townacf1$avg_sale_amount)
+plot(townacf1$avg_sale_amount, type="l")
+
+acf(townacf2$avg_sale_amount)
+plot(townacf2$avg_sale_amount, type="l")
+
+acf(townacf3$avg_sale_amount)
+plot(townacf3$avg_sale_amount, type="l")
+
+
+acf(townacf4$avg_sale_amount)
+plot(townacf4$avg_sale_amount, type="l")
+
+
+# Taking First order difference
+z1_killingly = diff(townacf1$avg_sale_amount, 1, 1)
+z2_danbury = diff(townacf2$avg_sale_amount, 1, 1)
+z3_monrow = diff(townacf3$avg_sale_amount, 1, 1)
+z4_shelton = diff(townacf4$avg_sale_amount, 1, 1)
+par(mfrow=c(2,2))
+plot(z1_killingly, type="l")
+acf(z1_killingly, lag.max = 100)
+plot(z2_danbury, type="l")
+acf(z2_danbury, lag.max = 100)
+plot(z3_monrow, type="l")
+acf(z3_monrow, lag.max = 100)
+plot(z4_shelton, type="l")
+acf(z4_shelton, lag.max = 100)
+
+
+
+# Group the better town results into one large set of data and identify patterns
+better_towns_aggregated_data <- sale_better_towns %>% group_by(List.Year) %>% summarise(avg_sale  = mean(avg_sale_amount))
+par(mfrow=c(3,1))
+
+plot(better_towns_aggregated_data$avg_sale, type="l")
+acf(better_towns_aggregated_data$avg_sale, lag.max = 10)
+pacf(better_towns_aggregated_data$avg_sale, lag.max = 10)
+
+
+z = diff(better_towns_aggregated_data$avg_sale, 1, 1)
+plot(z, type="l")
+acf(z, lag.max = 100)
+pacf(z, lag.max = 100)
+
+#Applying arima with p,d,q as 1,1,1 based on the graph of first order difference
+fit1 <- arima(better_towns_aggregated_data$avg_sale, order = c(1,1,1))
+fit2 <- auto.arima(better_towns_aggregated_data$avg_sale)
+fit3  <- arima(better_towns_aggregated_data$avg_sale, order = c(1,0,1))
+predict(fit1, n.ahead=5)
+forecast(fit1, h=5)
+fit1
+fit2
+fit3
+create_result_set <- function(forecasts) {
+  result <- data.frame(Town = character(), 'prediction_5years' = numeric() ,'profit' = numeric(), 'error'  = numeric())
+  i <- 0
+  for (town in better_towns) {
+    town1 <- sale_better_towns %>% filter(Town == town)
+    forecast <- forecasts %>% filter(Town == town)
+    last_year <- sale_better_towns %>% filter(Town == town) %>% arrange(desc(List.Year)) %>%slice_head(n=1)
+    profit <- forecast$forecast - last_year$avg_sale_amount
+    profit <- format(round(profit, 3), nsmall = 2)
+    pred_5yrs <- forecast$forecast
+    pred_5yrs <- format(round(pred_5yrs, 3), nsmall = 2)
+    error <- format(round(forecast$error, 3), nsmall = 2)
+    vect <- c(town, pred_5yrs, profit, error)
+    i = i+ 1
+    result[i,] <- vect
+  }
+  result1 <- result[order(result$profit, decreasing = TRUE), ]
+  return (result1)
+}
+
+
+
+
+
+# This function helps in finding the best model out of ARIMA , TSLM and auto.arima . 
+#Once it picks the best model based on rms error, it uses the model to forecast values for next 5 years.
+best_value <- function() {
+  result = data.frame(Town = character(), forecast = numeric(), error = numeric())
+  for (town in better_towns) {
+    fc1 <- function(x,h) {forecast(tslm(x ~ trend, lambda = 0), h=h)}
+    fc2 <- function(x,h) {forecast(arima(town1$avg_sale_amount, order = c(0,1,1)), h=h)}
+    fc3 <- function(x,h) {forecast(arima(town1$avg_sale_amount, order = c(1,1,0)), h=h)}
+    town1 <- sale_better_towns %>% filter(Town == town)
+    missed_year <- setdiff(2006:2021,town1$List.Year)
+    for (year in missed_year) {
+      sale_price <- town1 %>% filter(List.Year == year-1)
+      if(nrow(sale_price) > 0) {
+        temp_df <- data.frame(Town = town, List.Year = year, avg_sale_amount = sale_price$avg_sale_amount)
+        town1 <- rbind(town1, temp_df)
+      } else {
+        sale_price <- town1 %>% filter(List.Year == year+1)
+        temp_df <- data.frame(Town = town, List.Year = year, avg_sale_amount = sale_price$avg_sale_amount)
+        town1 <- rbind(town1, temp_df)
+      }
+      
+    }
+    town1 <- town1[order(town1$List.Year), ]
+    timeseries <- ts(town1$avg_sale_amount, start=2006, end=2021)
+    print(timeseries)
+    e1 <- forecast::tsCV(timeseries, fc1, h=5)
+    e2 <- forecast::tsCV(timeseries, fc2, h=5)
+    e3 <- forecast::tsCV(timeseries, fc3, h=5)
+    error1 <- sqrt(mean(e1^2, na.rm=TRUE))
+    error2 <- sqrt(mean(e2^2, na.rm=TRUE))
+    error3 <- sqrt(mean(e3^2, na.rm=TRUE))
+    
+    if (error1 < error3 && error1< error2)
+    {
+      #fvalue <- forecast(tslm(timeseries ~ trend), level = 80, h=5)
+      fvalue <- forecast(arima(town1$avg_sale_amount, order = c(0,2,1)),  level = 80, h=5)
+    } 
+    else if (error2 < error3 && error2< error1) {
+      fvalue <- forecast(arima(town1$avg_sale_amount, order = c(0,2,1)),  level = 80, h=5)
+    }else {
+      #fvalue <- forecast(arima(town1$avg_sale_amount, order = c(1,1,0)),  level = 80, h=h)
+      fvalue <- forecast(arima(town1$avg_sale_amount, order = c(0,2,1)),  level = 80, h=5)
+    }
+    last_mean <- tail(fvalue$mean, 1)
+    last_upper <- tail(fvalue$upper, 1)
+    diff <- last_upper - last_mean
+    temp_best_value <- data.frame(Town = town, forecast = last_mean[1], error = diff[1] )
+    result <- rbind(result, temp_best_value)
+  }
+  return (result)
+  
+}
+result <- best_value()
+report <- create_result_set(result)
+
+
+# Test the model 
+town2 <- sale_better_towns %>% filter(Town == "Killingly")
+acf(town2$avg_sale_amount)
+pacf(town2$avg_sale_amount)
+#----------------------------------------------------#
+# Expensive Towns
+top_50 <- head(top_residential_sales, 100)
+unique_expensive_towns <- unique(top_50$Town)
+temp_sale <- residential_df %>% filter(Town == "Greenwich")  %>% group_by(List.Year, Residential.Type) %>% summarise(avg_sale_amount = mean(Sale.Amount))
+#Condo
+condo <- temp_sale %>% filter(Residential.Type == "Single Family")
+

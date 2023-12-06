@@ -15,6 +15,7 @@ summary(median_income_df)
 dim(real_estate_df)
 dim(median_income_df)
 str(real_estate_df)
+
 str(median_income_df)
 View(median_income_df)
 
@@ -367,7 +368,7 @@ acf(df2$avg_sale_amount)
 pacf(df2$avg_sale_amount) 
 head(time_sales4)
 time_sales4 <- time_sales4[order(time_sales4$date), ]
-plot(acf(fitSalesYearMonth$residuals)) 
+#plot(acf(fitSalesYearMonth$residuals)) 
 
 
 # Although as per adf test, we reject null hypothesis in favour of Alternate hypothesis, we want to run confirmatory tests
@@ -398,8 +399,39 @@ fitAR1 <- glm(log(avg_sale_amount) ~ log(lag1) + t + month, data=time_sales4)
 plot((fitAR1$residuals), type="l")
 coef(fitAR1) 
 #co-eff, Beta1  = 0.8 , which is less than 1. The values are mean reverting.
-# 
 
 
 
+#----------------Post mid term -------------------------------
+# Price change in the last 5 years for residential type /. commercial type / vacant land 
 
+
+#First order difference
+z = diff(time_sales4$avg_sale_amount, 1, 1)
+plot(z, type="l")
+acf(z, lag.max = 100)
+pacf(z, lag.max = 100)
+z = diff(time_sales4$avg_sale_amount, 1, 2)
+plot(z, type="l")
+acf(z, lag.max = 100)
+pacf(z, lag.max = 100)
+z = diff(time_sales4$avg_sale_amount, 1, 3)
+plot(z, type="l")
+acf(z, lag.max = 100)
+pacf(z, lag.max = 100)
+
+fit1 = arima(time_sales4$avg_sale_amount, order = c(0,2,2))
+tsdiag(fit1)
+fit1
+
+fit2 = arima(time_sales4$avg_sale_amount, order = c(2,3,0))
+tsdiag(fit2)
+fit2
+library(forecast)
+fit3 = auto.arima(time_sales4$avg_sale_amount)
+tsdiag(fit3)
+fit3
+fit2
+fit1
+forecast = predict(fit1, n.ahead=10)
+forecast
